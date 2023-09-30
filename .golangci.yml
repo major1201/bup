@@ -1,0 +1,8 @@
+linters:
+  enable:
+    - bodyclose
+    - gofmt
+    - govet
+  disable:
+    - deadcode
+    - unused

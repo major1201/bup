@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>bup - Ultimate Plumber for browser</title>
+<style>
+#content {
+    font-family: monospace;
+    margin-top: 50px;
+}
+#command {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    font-size: medium;
+    font-family: monospace;
+    border: 3px solid #ccc;
+    padding: 5px;
+}
+</style>
+</head>
+<body>
+<input type="text" placeholder="e.g. grep Ultimate | awk '{print $1}'" id="command" autofocus>
+
+<pre id="content"></pre>
+
+<script>
+const protocol = document.location.protocol === 'https:' ? 'wss' : 'ws';
+let ws;
+let logTextArr = [];
+
+let input = document.getElementById("command");
+input.addEventListener("keypress", function(event) {
+    if (event.key === "Enter") {
+        // Cancel the default action, if needed
+        event.preventDefault();
+        newConn();
+    }
+});
+
+newConn();
+
+function newConn() {
+    stopSession();
+
+    // clear content
+    let content = document.getElementById('content');
+    logTextArr = [];
+    content.innerHTML = '';
+
+    // new connection
+    ws = new WebSocket(protocol + '://{{.WEBSOCKET_URI}}&command=' + encodeURIComponent(input.value));
+    ws.onmessage = function(event) {
+        pushText(event.data);
+    };
+}
+
+function pushText(text, isHtml) {
+    if (!isHtml) {
+        text = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+    }
+    let content = document.getElementById('content');
+    logTextArr.push(text);
+    content.innerHTML = logTextArr.join('');
+}
+
+function stopSession() {
+    if (ws) {
+        ws.close();
+    }
+}
+</script>
+</body>
+</html>
