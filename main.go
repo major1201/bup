@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,7 +72,7 @@ func (b *Buf) bytes(off, end int) []byte {
 	return res
 }
 
-func openBrowser(url string) error {
+func openBrowser(browser, url string) error {
 	var cmd string
 	var args []string
 
@@ -81,6 +82,17 @@ func openBrowser(url string) error {
 		args = []string{"/c", "start"}
 	case "darwin":
 		cmd = "open"
+		switch strings.ToLower(browser) {
+		case "": // default browser
+		case "chrome":
+			args = []string{"-a", "/Applications/Google Chrome.app"}
+		case "safari":
+			args = []string{"-a", "/Applications/Safari.app"}
+		case "firefox":
+			args = []string{"-a", "/Applications/Firefox.app"}
+		default:
+			args = []string{"-a", browser}
+		}
 	default: // "linux", "freebsd", "openbsd", "netbsd"
 		cmd = "xdg-open"
 	}
@@ -110,7 +122,7 @@ func main() {
 	L.Info("listening", "addr", listener.Addr().String())
 
 	// open url in default browser
-	openBrowser(fmt.Sprintf("http://%s", listener.Addr().String()))
+	openBrowser(*browserFlag, fmt.Sprintf("http://%s", listener.Addr().String()))
 
 	http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bup.ServeHTTP(w, r)

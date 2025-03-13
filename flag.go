@@ -12,6 +12,7 @@ var (
 	bufsizeFlag        = pflag.Int("buf", 40, "input buffer size & pipeline buffer sizes in `megabytes` (MiB)")
 	browserBufsizeFlag = pflag.Int("bbuf", 1, "browser buffer size & pipeline buffer sizes in `megabytes` (MiB)")
 	shellFlag          = pflag.StringArrayP("exec", "e", nil, "`command` to run pipeline with; repeat multiple times to pass multi-word command; defaults to '-e=$SHELL -e=-c'")
+	browserFlag        = pflag.StringP("browser", "b", "", "specify browser command to open, support macos only")
 )
 
 func init() {
