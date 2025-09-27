@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/pflag"
 )
@@ -31,12 +32,15 @@ type Buf struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	createTime time.Time
 }
 
 func NewBuf(size int64) *Buf {
 	res := &Buf{
-		buffer: make([]byte, size),
-		eof:    -1,
+		buffer:     make([]byte, size),
+		eof:        -1,
+		createTime: time.Now(),
 	}
 	res.ctx, res.cancel = context.WithCancel(context.Background())
 	return res
@@ -189,6 +193,9 @@ func main() {
 	if !*daemonModeFlag {
 		// wait for server to start
 		openBrowser(*browserFlag, url)
+	} else {
+		// start session GC in daemon mode
+		go startGC()
 	}
 
 	http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
