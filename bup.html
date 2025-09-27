@@ -63,15 +63,23 @@ srcInput.addEventListener("keypress", function(event) {
     }
 });
 
-if (!daemonMode) {
+function hideSrcInput() {
     srcInput.style.display = 'none';
     input.style.width = "100%";
+}
+
+if (!daemonMode) {
+    hideSrcInput();
 } else {
     const urlParams = new URLSearchParams(window.location.search);
     const src = urlParams.get("src");
     srcInput.value = src;
-    input.blur();
-    srcInput.focus();
+    if (src == null || src === "") {
+        input.blur();
+        srcInput.focus();
+    } else {
+        hideSrcInput();
+    }
 }
 
 newConn(true);
