@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -11,7 +12,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/spf13/pflag"
 )
@@ -19,7 +19,7 @@ import (
 var (
 	bufsize  = int64(*bufsizeFlag * 1024 * 1024)
 	bbufsize = *browserBufsizeFlag * 1024 * 1024
-	buf      = NewBuf(bufsize)
+	bufMap   = make(map[string]*Buf)
 )
 
 type Buf struct {
@@ -27,19 +27,29 @@ type Buf struct {
 	n      int
 	mu     sync.Mutex
 	eof    int // eof offset
+	_stop  bool
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewBuf(size int64) *Buf {
-	return &Buf{
+	res := &Buf{
 		buffer: make([]byte, size),
 		eof:    -1,
 	}
+	res.ctx, res.cancel = context.WithCancel(context.Background())
+	return res
 }
 
-func (b *Buf) startCaptureStdin() {
+func (b *Buf) startCaptureReader(reader io.Reader) {
 	for {
+		if b._stop {
+			return
+		}
+
 		b.mu.Lock()
-		n, err := os.Stdin.Read(b.buffer[b.n:])
+		n, err := reader.Read(b.buffer[b.n:])
 		if err != nil && err != io.EOF {
 			L.Error(err, "read from stdin error")
 			os.Exit(1)
@@ -49,9 +59,33 @@ func (b *Buf) startCaptureStdin() {
 
 		if err == io.EOF {
 			b.eof = b.n
-			time.Sleep(100 * time.Millisecond)
+			break
 		}
 	}
+}
+
+func (b *Buf) startCaptureStdin() {
+	b.startCaptureReader(os.Stdin)
+}
+
+func (b *Buf) startCaptureCommand(srcCommand string) {
+	sh := getShell()
+	cmd := exec.CommandContext(b.ctx, sh[0], append(sh[1:], srcCommand)...)
+	reader, err := cmd.StdoutPipe()
+	if err != nil {
+		L.Error(err, "get stdout pipe failed")
+		b.buffer = []byte(err.Error())
+		return
+	}
+	cmd.Start()
+	defer reader.Close()
+
+	b.startCaptureReader(reader)
+}
+
+func (b *Buf) stop() {
+	b._stop = true
+	b.cancel()
 }
 
 func (b *Buf) eofOffset() int {
@@ -59,7 +93,13 @@ func (b *Buf) eofOffset() int {
 }
 
 func (b *Buf) newReader() io.Reader {
-	return bytes.NewReader(b.buffer[:b.n])
+	if b.eof > 0 {
+		return bytes.NewReader(b.buffer[:b.n])
+	}
+
+	return &BufReader{
+		buf: b,
+	}
 }
 
 func (b *Buf) bytes(off, end int) []byte {
@@ -70,6 +110,21 @@ func (b *Buf) bytes(off, end int) []byte {
 	res := make([]byte, realEnd-off)
 	copy(res, b.buffer[off:])
 	return res
+}
+
+type BufReader struct {
+	buf *Buf
+	n   int
+}
+
+func (r *BufReader) Read(b []byte) (n int, err error) {
+	if r.buf.eof > 0 && r.buf.eof == r.n {
+		return 0, io.EOF
+	}
+
+	n = copy(b, r.buf.buffer[r.n:r.buf.n])
+	r.n += n
+	return
 }
 
 func openBrowser(browser, url string) error {
@@ -108,12 +163,19 @@ func main() {
 		return
 	}
 
-	go buf.startCaptureStdin()
-
 	bup := NewBup()
 
-	// random port
-	listener, err := net.Listen("tcp", "localhost:0")
+	var listener net.Listener
+	var err error
+	if *daemonModeFlag {
+		listener, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", *portFlag))
+	} else {
+		bufMap[""] = NewBuf(bufsize)
+		go bufMap[""].startCaptureStdin()
+
+		// random port
+		listener, err = net.Listen("tcp", "localhost:0")
+	}
 	if err != nil {
 		L.Error(err, "listen to random port failed")
 		os.Exit(2)
@@ -122,7 +184,12 @@ func main() {
 	L.Info("listening", "addr", listener.Addr().String())
 
 	// open url in default browser
-	openBrowser(*browserFlag, fmt.Sprintf("http://%s", listener.Addr().String()))
+	url := fmt.Sprintf("http://%s", listener.Addr().String())
+	L.Info("open following link to get access", "url", url)
+	if !*daemonModeFlag {
+		// wait for server to start
+		openBrowser(*browserFlag, url)
+	}
 
 	http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bup.ServeHTTP(w, r)

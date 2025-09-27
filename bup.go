@@ -46,6 +46,7 @@ func (l *bup) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	vars := map[string]string{
 		"WEBSOCKET_URI": wsURI,
+		"DAEMON_MODE":   fmt.Sprintf("%t", *daemonModeFlag),
 	}
 
 	if err := l.tpl.Execute(w, vars); err != nil {
@@ -58,7 +59,9 @@ func (l *bup) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (l *bup) handleWebsocket(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	command := q.Get("command")
-	L.Info("new request", "command", command)
+	srcCommand := q.Get("srcCommand")
+	sessionID := q.Get("sessionId")
+	L.Info("new request", "sessionID", sessionID, "command", command, "srcCommand", srcCommand)
 
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -78,6 +81,14 @@ func (l *bup) handleWebsocket(w http.ResponseWriter, r *http.Request) {
 	})
 
 	go func() {
+		buf := bufMap[sessionID]
+		var isNewBuf bool
+		if buf == nil {
+			buf = NewBuf(bufsize)
+			bufMap[sessionID] = buf
+			isNewBuf = true
+		}
+
 		defer closeFunc()
 
 		go func() {
@@ -88,6 +99,20 @@ func (l *bup) handleWebsocket(w http.ResponseWriter, r *http.Request) {
 
 		if l.cmd != nil {
 			l.cmd.Process.Kill()
+		}
+
+		if srcCommand != "" {
+			if sessionID == "" {
+				conn.Write([]byte("sessionId must not be empty if srcCommand is not empty"))
+				return
+			}
+			if !isNewBuf {
+				// reset buf
+				buf.stop()
+				buf = NewBuf(bufsize)
+				bufMap[sessionID] = buf
+			}
+			go buf.startCaptureCommand(srcCommand)
 		}
 
 		if command == "" {

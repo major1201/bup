@@ -21,3 +21,5 @@ release/
 .env
 *.work
 *.work.sum
+
+bup

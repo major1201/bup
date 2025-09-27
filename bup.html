@@ -8,20 +8,33 @@
     font-family: monospace;
     margin-top: 50px;
 }
-#command {
-    position: fixed;
+.input-container-with-gap {
+    display: flex;
     top: 10px;
-    left: 10px;
-    right: 10px;
-    font-size: medium;
-    font-family: monospace;
+    position: fixed;
+    left: 5px;
+    right: 5px;
+    gap: 10px;
+    margin-top: 0;
+    z-index: 1000;
+}
+.input-container-with-gap .input-child {
+    width: 50%;
     border: 3px solid #ccc;
     padding: 5px;
+    box-sizing: border-box;
+    font-size: 16px;
+    font-size: medium;
+    font-family: monospace;
 }
 </style>
 </head>
 <body>
-<input type="text" placeholder="e.g. grep Ultimate | awk '{print $1}'" id="command" autofocus>
+
+<div class="input-container-with-gap">
+    <input type="text" class="input-child" placeholder="Source Command, e.g. echo bup" id="srcCommand">
+    <input type="text" class="input-child" placeholder="e.g. grep Ultimate | awk '{print $1}'" id="command" autofocus>
+</div>
 
 <pre id="content"></pre>
 
@@ -29,19 +42,41 @@
 const protocol = document.location.protocol === 'https:' ? 'wss' : 'ws';
 let ws;
 let logTextArr = [];
+const daemonMode = {{.DAEMON_MODE}} === "true";
+const sessionId = (Math.random() + 1).toString(36).substring(7);
 
 let input = document.getElementById("command");
 input.addEventListener("keypress", function(event) {
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && !event.shiftKey) {
         // Cancel the default action, if needed
         event.preventDefault();
-        newConn();
+        newConn(false);
     }
 });
 
-newConn();
+let srcInput = document.getElementById("srcCommand");
+srcInput.addEventListener("keypress", function(event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+        // Cancel the default action, if needed
+        event.preventDefault();
+        newConn(true);
+    }
+});
 
-function newConn() {
+if (!daemonMode) {
+    srcInput.style.display = 'none';
+    input.style.width = "100%";
+} else {
+    const urlParams = new URLSearchParams(window.location.search);
+    const src = urlParams.get("src");
+    srcInput.value = src;
+    input.blur();
+    srcInput.focus();
+}
+
+newConn(true);
+
+function newConn(updateSrc) {
     stopSession();
 
     // clear content
@@ -50,7 +85,15 @@ function newConn() {
     content.innerHTML = '';
 
     // new connection
-    ws = new WebSocket(protocol + '://{{.WEBSOCKET_URI}}&command=' + encodeURIComponent(input.value));
+    let url = protocol + '://{{.WEBSOCKET_URI}}&command=' + encodeURIComponent(input.value);
+    if (updateSrc) {
+        url += '&srcCommand=' + encodeURIComponent(srcInput.value);
+    }
+    if (srcInput.value != "") {
+        url += '&sessionId=' + sessionId;
+    }
+
+    ws = new WebSocket(url);
     ws.onmessage = function(event) {
         pushText(event.data);
     };

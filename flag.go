@@ -13,6 +13,8 @@ var (
 	browserBufsizeFlag = pflag.Int("bbuf", 1, "browser buffer size & pipeline buffer sizes in `megabytes` (MiB)")
 	shellFlag          = pflag.StringArrayP("exec", "e", nil, "`command` to run pipeline with; repeat multiple times to pass multi-word command; defaults to '-e=$SHELL -e=-c'")
 	browserFlag        = pflag.StringP("browser", "b", "", "specify browser command to open, support macos only")
+	daemonModeFlag     = pflag.BoolP("daemon", "d", false, "run in daemon mode, do not open browser automatically, enter input command manually")
+	portFlag           = pflag.IntP("port", "p", 8080, "specify port to listen on, only valid in daemon mode")
 )
 
 func init() {
