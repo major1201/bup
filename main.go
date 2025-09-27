@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	bufsize  = int64(*bufsizeFlag * 1024 * 1024)
-	bbufsize = *browserBufsizeFlag * 1024 * 1024
+	bufsize  int64
+	bbufsize int
 	bufMap   = make(map[string]*Buf)
 )
 
@@ -166,6 +166,9 @@ func main() {
 		pflag.Usage()
 		return
 	}
+
+	bufsize = int64(*bufsizeFlag * 1024 * 1024)
+	bbufsize = *browserBufsizeFlag * 1024 * 1024
 
 	bup := NewBup()
 
