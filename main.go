@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"runtime"
@@ -32,6 +33,7 @@ type Buf struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+	cmd    *exec.Cmd
 
 	createTime time.Time
 }
@@ -65,6 +67,11 @@ func (b *Buf) startCaptureReader(reader io.Reader) {
 			b.eof = b.n
 			break
 		}
+
+		// avoid busy loop
+		if n == 0 {
+			time.Sleep(50 * time.Millisecond)
+		}
 	}
 }
 
@@ -74,14 +81,14 @@ func (b *Buf) startCaptureStdin() {
 
 func (b *Buf) startCaptureCommand(srcCommand string) {
 	sh := getShell()
-	cmd := exec.CommandContext(b.ctx, sh[0], append(sh[1:], srcCommand)...)
-	reader, err := cmd.StdoutPipe()
+	b.cmd = exec.CommandContext(b.ctx, sh[0], append(sh[1:], srcCommand)...)
+	reader, err := b.cmd.StdoutPipe()
 	if err != nil {
 		L.Error(err, "get stdout pipe failed")
 		b.buffer = []byte(err.Error())
 		return
 	}
-	cmd.Start()
+	b.cmd.Start()
 	defer reader.Close()
 
 	b.startCaptureReader(reader)
@@ -89,6 +96,10 @@ func (b *Buf) startCaptureCommand(srcCommand string) {
 
 func (b *Buf) stop() {
 	b._stop = true
+	if b.cmd != nil && b.cmd.Process != nil {
+		b.cmd.Process.Kill()
+		b.cmd.Wait()
+	}
 	b.cancel()
 }
 
@@ -201,7 +212,8 @@ func main() {
 		go startGC()
 	}
 
-	http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bup.ServeHTTP(w, r)
-	}))
+	mux := http.DefaultServeMux
+	mux.HandleFunc("/", bup.ServeHTTP)
+
+	http.Serve(listener, mux)
 }

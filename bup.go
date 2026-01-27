@@ -74,21 +74,25 @@ func (l *bup) handleWebsocket(w http.ResponseWriter, r *http.Request) {
 		_ = wsConn.Close()
 	}
 
+	buf := bufMap[sessionID]
+	var isNewBuf bool
+	if buf == nil {
+		buf = NewBuf(bufsize)
+		bufMap[sessionID] = buf
+		isNewBuf = true
+	}
+
 	var closed bool
 	wsConn.SetCloseHandler(func(_ int, _ string) error {
 		closed = true
+		if l.cmd != nil {
+			l.cmd.Process.Kill()
+		}
+		buf.stop()
 		return nil
 	})
 
 	go func() {
-		buf := bufMap[sessionID]
-		var isNewBuf bool
-		if buf == nil {
-			buf = NewBuf(bufsize)
-			bufMap[sessionID] = buf
-			isNewBuf = true
-		}
-
 		defer closeFunc()
 
 		go func() {
@@ -96,10 +100,6 @@ func (l *bup) handleWebsocket(w http.ResponseWriter, r *http.Request) {
 			// https://github.com/gorilla/websocket/issues/414
 			_, _, _ = wsConn.NextReader()
 		}()
-
-		if l.cmd != nil {
-			l.cmd.Process.Kill()
-		}
 
 		if srcCommand != "" {
 			if sessionID == "" {
