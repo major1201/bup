@@ -58,7 +58,7 @@ func (b *Buf) startCaptureReader(reader io.Reader) {
 		n, err := reader.Read(b.buffer[b.n:])
 		if err != nil && err != io.EOF {
 			L.Error(err, "read from stdin error")
-			os.Exit(1)
+			break
 		}
 		b.n += n
 		b.mu.Unlock()
